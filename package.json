@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@deepgram/sdk": "^4.11.2",
     "next": "16.0.3",
     "open-hand-tracker": "^1.0.9",
     "react": "19.2.0",
