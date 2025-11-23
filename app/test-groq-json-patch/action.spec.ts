@@ -121,4 +121,20 @@ describe("Groq Hand History Patching", () => {
     },
     TIMEOUT
   );
+
+  it(
+    "should default player stack sizes to 100BB if unspecified",
+    async () => {
+      // Default blinds are 1/2, so 100BB = 200
+      const state = await processCommand("I'm UTG");
+
+      const hero = state.players.find(
+        (p: any) => p.id === state.hero_player_id
+      );
+
+      expect(hero).toBeDefined();
+      expect(hero.starting_stack).toBe(200);
+    },
+    TIMEOUT
+  );
 });

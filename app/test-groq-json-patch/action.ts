@@ -92,6 +92,9 @@ export async function generateHandHistoryPatch(
            - "Hero": Refers to the player with 'hero_player_id'.
 
         8. Output ONLY the JSON patch array wrapped in the 'patches' object.
+
+        9. Stack Sizes:
+           - If the user does not specify a stack size for a player, assume the starting stack is 100 * big_blind_amount (100 BBs).
       `,
       prompt: `
         Current State Context: ${JSON.stringify(currentStateContext)}

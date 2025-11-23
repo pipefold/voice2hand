@@ -26,6 +26,8 @@ export default function TestGroqJsonPatchPage() {
       table_size: history.table_size,
       players: history.players,
       dealer_seat: history.dealer_seat,
+      small_blind_amount: history.small_blind_amount,
+      big_blind_amount: history.big_blind_amount,
     };
 
     const result = await generateHandHistoryPatch(input, context);
