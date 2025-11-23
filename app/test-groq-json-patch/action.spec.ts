@@ -12,11 +12,13 @@ dotenv.config();
 // Helper to run the flow
 async function processCommand(command: string, initialState: any = null) {
   const state = initialState || new OpenHandHistory().toJSON().ohh;
-  // Create context similar to page.tsx
+
   const context = {
     table_size: state.table_size,
     players: state.players,
     dealer_seat: state.dealer_seat,
+    small_blind_amount: state.small_blind_amount,
+    big_blind_amount: state.big_blind_amount,
   };
 
   const result = await generateHandHistoryPatch(command, context);
@@ -102,6 +104,20 @@ describe("Groq Hand History Patching", () => {
       );
       expect(hero).toBeDefined();
       expect(hero.seat).toBe(7);
+    },
+    TIMEOUT
+  );
+
+  it(
+    "should update stakes based on natural language",
+    async () => {
+      const state = await processCommand(
+        "Okay. So we're playing two five six max cash."
+      );
+
+      expect(state.table_size).toBe(6);
+      expect(state.small_blind_amount).toBe(2);
+      expect(state.big_blind_amount).toBe(5);
     },
     TIMEOUT
   );

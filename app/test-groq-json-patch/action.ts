@@ -40,6 +40,8 @@ export async function generateHandHistoryPatch(
           table_size: number;
           dealer_seat: number;
           hero_player_id: number;
+          small_blind_amount: number;
+          big_blind_amount: number;
           players: Array<{
             id: number,
             name: string,
@@ -72,11 +74,24 @@ export async function generateHandHistoryPatch(
         
         4. Card Format: Always use Uppercase Rank + Lowercase Suit (e.g., "As", "Ah", "Kd", "Tc").
         
-        5. Patch Strategy:
+        5. Stakes and Game Type:
+           - If user says "two five" or "2/5", set small_blind_amount=2, big_blind_amount=5.
+           - If user says "one two" or "1/2", set small_blind_amount=1, big_blind_amount=2.
+           - If user says "six max" or "6 max", set table_size=6.
+           - If user says "nine handed" or "9 handed", set table_size=9.
+
+        6. Patch Strategy:
            - If the player already exists, prefer "replace" operations on their fields.
            - Only use "add" for new players.
         
-        6. Output ONLY the JSON patch array wrapped in the 'patches' object.
+        7. Terminology & Aggression:
+           - "3-bet": This is a re-raise. 
+             - Pre-flop: Open raise -> 3-bet. 
+             - Post-flop: Bet -> Raise -> 3-bet.
+           - If a player "3-bets", find the current active bet amount and increase it substantially (or to the specified amount).
+           - "Hero": Refers to the player with 'hero_player_id'.
+
+        8. Output ONLY the JSON patch array wrapped in the 'patches' object.
       `,
       prompt: `
         Current State Context: ${JSON.stringify(currentStateContext)}
