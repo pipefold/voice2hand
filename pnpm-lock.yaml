@@ -14,9 +14,6 @@ importers:
       next:
         specifier: 16.0.3
         version: 16.0.3(@babel/core@7.28.5)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
-      open-hand-tracker:
-        specifier: ^1.0.9
-        version: 1.0.9
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -1593,9 +1590,6 @@ packages:
   object.values@1.2.1:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
-
-  open-hand-tracker@1.0.9:
-    resolution: {integrity: sha512-61Dgo9O2SeqR6rTN9iftbBNSPj/EUA/bVA+ooeWIk1QYFaFJ3TF06P3e9Di1p3ZEJuSkcGDNzcPGl1PHOZR1hA==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -3647,8 +3641,6 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.1
-
-  open-hand-tracker@1.0.9: {}
 
   optionator@0.9.4:
     dependencies:

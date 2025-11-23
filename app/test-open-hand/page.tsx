@@ -1,4 +1,4 @@
-import { OpenHandHistory } from "open-hand-tracker";
+import { OpenHandHistory } from "../lib/OpenHandHistory";
 
 const handHistory = buildHandHistory();
 
