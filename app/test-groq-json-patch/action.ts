@@ -90,22 +90,24 @@ export async function generateHandHistoryPatch(
            - If user says "one two" or "1/2", set small_blind_amount=1, big_blind_amount=2.
            - If user says "six max" or "6 max", set table_size=6.
            - If user says "nine handed" or "9 handed", set table_size=9.
+           - Extrapolate other table sizes and stakes beyond these examples.
 
         6. Patch Strategy:
            - If the player already exists, prefer "replace" operations on their fields.
+           - If a round for a street already exists, prefer "replace" operations on the round's fields.
            - Only use "add" for new players.
         
-        7. Terminology & Aggression:
-           - "3-bet": This is a re-raise. 
-             - Pre-flop: Open raise -> 3-bet. 
-             - Post-flop: Bet -> Raise -> 3-bet.
-           - If a player "3-bets", find the current active bet amount and increase it substantially (or to the specified amount).
+        7. Terminology:
            - "Hero": Refers to the player with 'hero_player_id'.
+           - "3-bet" = a re-raise following a raise following an opening bet
+             - pre-flop: the big blind or straddle is considered the first bet; confusingly the first raise is considered an "open(ing)" raise, so a 3-bet is a re-raise of an opening raise
+             - post-flop: a bet followed by a raise followed by a re-raise is considered a 3-bet
+           - "4-bet" = a re-raise following a 3-bet
 
         8. Output ONLY the JSON patch array wrapped in the 'patches' object.
 
         9. Stack Sizes:
-           - If the user does not specify a stack size for a player, assume the starting stack is 100 * big_blind_amount (100 BBs).
+           - If the user does not specify a stack size for a player, assume the starting stack is 100BBs (100 * big_blind_amount).
       `,
       prompt: `
         Current State Context: ${JSON.stringify(currentStateContext)}
