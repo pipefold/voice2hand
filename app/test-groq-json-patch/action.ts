@@ -49,7 +49,18 @@ export async function generateHandHistoryPatch(
             starting_stack: number,
             cards?: string[]
           }>;
-          rounds: Array<Round>;
+          rounds: Array<{
+            id: number;
+            cards?: string[];
+            street: "Preflop" | "Flop" | "Turn" | "River" | "Showdown";
+            actions: Array<{
+              action_number: number;
+              player_id: number;
+              action: "Dealt Card" | "Post SB" | "Post BB" | "Fold" | "Check" | "Bet" | "Raise" | "Call";
+              amount?: number;
+              is_allin?: boolean;
+            }>;
+          }>;
           ...
         }
 
