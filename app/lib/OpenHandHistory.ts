@@ -1,4 +1,3 @@
-
 // --- Types (formerly types.ts) ---
 
 export interface Player {
@@ -76,7 +75,7 @@ export class OpenHandHistory {
     siteName = "HomeGame",
     gameType = "Holdem",
     tableName = "Sample Table",
-    tableSize = 3,
+    tableSize = 8,
     gameNumber = "1",
     startDateUTC = new Date().toISOString(),
     currency = "Chips",
@@ -178,5 +177,3 @@ export class OpenHandHistory {
     return winningAmount;
   }
 }
-
-
