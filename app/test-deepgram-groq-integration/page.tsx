@@ -17,6 +17,41 @@ import { applyPatch, Operation } from "rfc6902";
 
 const ENDPOINTING_MS = 500;
 
+const POKER_KEYTERMS = [
+  "button",
+  "raise",
+  "fold",
+  "check",
+  "call",
+  "bet",
+  "3-bet",
+  "4-bet",
+  "all-in",
+  "blind",
+  "ante",
+  "flop",
+  "turn",
+  "river",
+  "showdown",
+  "pot",
+  "stack",
+  "dealer",
+  "small blind",
+  "big blind",
+  "utg",
+  "hijack",
+  "cutoff",
+  "ace",
+  "king",
+  "queen",
+  "jack",
+  "ten",
+  "spades",
+  "hearts",
+  "diamonds",
+  "clubs",
+];
+
 export default function TestDeepgramGroqIntegration() {
   // --- Groq / Game State ---
   const [history, setHistory] = useState(
@@ -112,6 +147,7 @@ export default function TestDeepgramGroqIntegration() {
       smart_format: true,
       endpointing: ENDPOINTING_MS,
       vad_events: true,
+      keyterm: POKER_KEYTERMS,
     });
   };
 
