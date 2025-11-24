@@ -24,6 +24,7 @@ const patchSchema = z.object({
 
 export async function generateHandHistoryPatch(
   userInput: string,
+  previousTranscript: string[],
   currentStateContext: any
 ) {
   try {
@@ -112,7 +113,10 @@ export async function generateHandHistoryPatch(
       prompt: `
         Current State Context: ${JSON.stringify(currentStateContext)}
         
-        User Command: "${userInput}"
+        Previous Transcript Segments:
+        ${JSON.stringify(previousTranscript)}
+
+        Latest Transcript Segment: "${userInput}"
       `,
     });
 

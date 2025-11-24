@@ -13,6 +13,7 @@ export default function TestGroqJsonPatchPage() {
         .ohh
   );
   const [input, setInput] = useState("5-handed and I'm under the gun");
+  const [transcript, setTranscript] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastPatch, setLastPatch] = useState<any>(null);
 
@@ -30,7 +31,7 @@ export default function TestGroqJsonPatchPage() {
       big_blind_amount: history.big_blind_amount,
     };
 
-    const result = await generateHandHistoryPatch(input, context);
+    const result = await generateHandHistoryPatch(input, transcript, context);
 
     if (result.success && result.patches) {
       setLastPatch(result.patches);
@@ -45,6 +46,8 @@ export default function TestGroqJsonPatchPage() {
       if (!firstError) {
         // Update state
         setHistory(newHistory);
+        setTranscript((prev) => [...prev, input]);
+        setInput("");
       } else {
         console.error("Patch failed:", firstError);
         alert("Patch application failed (see console)");
@@ -59,6 +62,8 @@ export default function TestGroqJsonPatchPage() {
   const resetState = () => {
     setHistory(new OpenHandHistory().toJSON().ohh);
     setLastPatch(null);
+    setTranscript([]);
+    setInput("5-handed and I'm under the gun");
   };
 
   return (
@@ -68,6 +73,17 @@ export default function TestGroqJsonPatchPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Left Column: Input & Controls */}
         <div className="space-y-6">
+          {transcript.length > 0 && (
+            <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm space-y-2">
+              <h3 className="font-bold text-blue-900">Transcript History</h3>
+              <ul className="list-decimal list-inside text-blue-800 space-y-1">
+                {transcript.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">

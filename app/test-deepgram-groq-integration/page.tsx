@@ -16,7 +16,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { applyPatch, Operation } from "rfc6902";
 
 const ENDPOINTING_MS = 500;
-const UTTERANCE_END_MS = 1200;
 
 export default function TestDeepgramGroqIntegration() {
   // --- Groq / Game State ---
@@ -27,6 +26,7 @@ export default function TestDeepgramGroqIntegration() {
   );
   const [lastPatch, setLastPatch] = useState<any>(null);
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
+  const [transcript, setTranscript] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // --- Deepgram / Audio State ---
@@ -41,25 +41,6 @@ export default function TestDeepgramGroqIntegration() {
   const lastEndpointedChunkRef = useRef<string | null>(null);
 
   // --- Command Processing Logic ---
-
-  const processCommand = useCallback(async (commandText: string) => {
-    console.log("Processing command:", commandText);
-
-    // We use the functional update to ensure we get the absolute latest state
-    // However, we need the state *value* to pass to the AI.
-    // Since this is async and queued, we rely on the 'history' state being up to date
-    // when this function executes.
-    // NOTE: In a real queue system, we'd need to be careful about state closure staleness.
-    // Here, we will trust React's state if we manage the queue sequentially.
-
-    // To avoid closure staleness, we might need to use a ref for the current history
-    // or pass it in if we were chaining.
-    // Let's use a Ref for history to be safe for the async operations
-
-    // Actually, let's just use the current 'history' from the render scope.
-    // But wait, 'processCommand' is created once? No, we need it to access latest history.
-    // The useEffect handling the queue will need to depend on 'history'.
-  }, []); // We'll implement the actual logic inside the effect that watches the queue
 
   // Queue watcher
   useEffect(() => {
@@ -76,28 +57,29 @@ export default function TestDeepgramGroqIntegration() {
           dealer_seat: history.dealer_seat,
         };
 
-        const result = await generateHandHistoryPatch(command, context);
+        const result = await generateHandHistoryPatch(
+          command,
+          transcript,
+          context
+        );
 
         if (result.success && result.patches) {
           setLastPatch(result.patches);
 
           // Apply patch
-          // Note: We read 'history' again here or use the functional update
-          // Ideally we patch the latest state.
+          const tempHistory = JSON.parse(JSON.stringify(history));
+          const results = applyPatch(
+            tempHistory,
+            result.patches as Operation[]
+          );
+          const firstError = results.find((r) => r !== null);
 
-          setHistory((prevHistory: any) => {
-            const newHistory = JSON.parse(JSON.stringify(prevHistory));
-            const results = applyPatch(
-              newHistory,
-              result.patches as Operation[]
-            );
-            const firstError = results.find((r) => r !== null);
-            if (firstError) {
-              console.error("Patch failed:", firstError);
-              return prevHistory; // Revert/Ignore if failed
-            }
-            return newHistory;
-          });
+          if (firstError) {
+            console.error("Patch failed:", firstError);
+          } else {
+            setHistory(tempHistory);
+            setTranscript((prev) => [...prev, command]);
+          }
         } else {
           console.warn("Failed to generate patch for:", command);
         }
@@ -111,7 +93,7 @@ export default function TestDeepgramGroqIntegration() {
     };
 
     processQueue();
-  }, [processingQueue, isProcessing, history]);
+  }, [processingQueue, isProcessing, history, transcript]);
 
   // --- Deepgram Setup ---
 
@@ -126,10 +108,9 @@ export default function TestDeepgramGroqIntegration() {
     setStatus("connecting to Deepgram...");
     await connectToDeepgram({
       model: "nova-3",
-      interim_results: true,
+      interim_results: false,
       smart_format: true,
       endpointing: ENDPOINTING_MS,
-      utterance_end_ms: UTTERANCE_END_MS,
       vad_events: true,
     });
   };
@@ -192,6 +173,7 @@ export default function TestDeepgramGroqIntegration() {
     setHistory(new OpenHandHistory().toJSON().ohh);
     setLastPatch(null);
     setProcessingQueue([]);
+    setTranscript([]);
   };
 
   return (
@@ -225,12 +207,22 @@ export default function TestDeepgramGroqIntegration() {
             </div>
           </div>
 
+          {/* Transcript Debug */}
+          <div className="p-4 bg-slate-50 border rounded-lg">
+            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
+              Transcript Array (Debug)
+            </h3>
+            <pre className="text-xs overflow-auto max-h-40 bg-white p-2 border text-gray-900 font-mono">
+              {JSON.stringify(transcript, null, 2)}
+            </pre>
+          </div>
+
           {/* Live Transcript */}
           <div className="p-4 bg-slate-50 border rounded-lg">
             <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
               Live Transcript
             </h3>
-            <p className="text-lg text-slate-800 min-h-[3rem]">
+            <p className="text-lg text-slate-800 min-h-12">
               {transcriptText || (
                 <span className="text-gray-400 italic">(speak now...)</span>
               )}
@@ -238,9 +230,9 @@ export default function TestDeepgramGroqIntegration() {
           </div>
 
           {/* Queue Status */}
-          <div className="p-4 bg-slate-50 border rounded-lg">
+          <div className="p-4 bg-slate-50 border rounded-lg opacity-50 hover:opacity-100 transition-opacity">
             <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
-              Processing Queue
+              Processing Queue (Debug)
             </h3>
             {processingQueue.length === 0 && !isProcessing ? (
               <p className="text-sm text-gray-400">(empty)</p>
