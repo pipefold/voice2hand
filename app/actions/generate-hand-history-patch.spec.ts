@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as dotenv from "dotenv";
-import { generateHandHistoryPatch } from "./action";
-import { OpenHandHistory } from "../../lib/OpenHandHistory";
+import { generateHandHistoryPatch } from "./generate-hand-history-patch";
+import { OpenHandHistory } from "../lib/OpenHandHistory";
 import { applyPatch, Operation } from "rfc6902";
 
 // Load environment variables
@@ -138,3 +138,4 @@ describe("Groq Hand History Patching", () => {
     TIMEOUT
   );
 });
+

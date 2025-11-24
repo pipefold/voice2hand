@@ -155,3 +155,4 @@ export async function generateHandHistoryPatch(
     return { success: false, error: "Failed to generate patch" };
   }
 }
+

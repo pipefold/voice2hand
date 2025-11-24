@@ -10,31 +10,15 @@ import {
   MicrophoneEvents,
   useMicrophone,
 } from "@/app/context/MicrophoneContextProvider";
-import { OpenHandHistory } from "@/app/lib/OpenHandHistory";
-import { generateHandHistoryPatch } from "@/app/prototypes/groq-json-patcher/action";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { applyPatch, Operation } from "rfc6902";
+import { useVoiceHandHistory } from "@/app/hooks/useVoiceHandHistory";
+import { useEffect, useRef, useState } from "react";
 
 const ENDPOINTING_MS = 500;
 
 export default function TestDeepgramGroqIntegration() {
   // --- Groq / Game State ---
-  const [history, setHistory] = useState(
-    () =>
-      new OpenHandHistory({ startDateUTC: "2023-01-01T00:00:00.000Z" }).toJSON()
-        .ohh
-  );
-  const [patchHistory, setPatchHistory] = useState<
-    {
-      command: string;
-      patches: any;
-      timestamp: string;
-      error?: any;
-    }[]
-  >([]);
-  const [processingQueue, setProcessingQueue] = useState<string[]>([]);
-  const [transcript, setTranscript] = useState<string[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { history, patchHistory, transcript, resetState, processCommand } =
+    useVoiceHandHistory();
 
   // --- Deepgram / Audio State ---
   const [status, setStatus] = useState<string>("idle");
@@ -46,86 +30,6 @@ export default function TestDeepgramGroqIntegration() {
 
   const startedRef = useRef(false);
   const lastEndpointedChunkRef = useRef<string | null>(null);
-
-  // --- Command Processing Logic ---
-
-  // Queue watcher
-  useEffect(() => {
-    const processQueue = async () => {
-      if (isProcessing || processingQueue.length === 0) return;
-
-      setIsProcessing(true);
-      const command = processingQueue[0];
-
-      try {
-        const context = {
-          table_size: history.table_size,
-          players: history.players,
-          dealer_seat: history.dealer_seat,
-          rounds: history.rounds,
-        };
-
-        const result = await generateHandHistoryPatch(
-          command,
-          transcript,
-          context
-        );
-
-        if (result.success && result.patches) {
-          // Apply patch
-          const tempHistory = JSON.parse(JSON.stringify(history));
-          const results = applyPatch(
-            tempHistory,
-            result.patches as Operation[]
-          );
-          const firstError = results.find((r) => r !== null);
-
-          setPatchHistory((prev) => [
-            {
-              command,
-              patches: result.patches,
-              timestamp: new Date().toLocaleTimeString(),
-              error: firstError,
-            },
-            ...prev,
-          ]);
-
-          // Always update transcript so context is preserved, even if patch failed
-          setTranscript((prev) => [...prev, command]);
-
-          if (firstError) {
-            console.error("Patch failed:", firstError);
-          } else {
-            setHistory(tempHistory);
-          }
-        } else {
-          console.warn("Failed to generate patch for:", command);
-
-          // Track generation failures
-          setPatchHistory((prev) => [
-            {
-              command,
-              patches: null,
-              timestamp: new Date().toLocaleTimeString(),
-              error: result.error || "Failed to generate patch",
-            },
-            ...prev,
-          ]);
-
-          // Keep command in transcript so we have context
-          setTranscript((prev) => [...prev, command]);
-        }
-      } catch (e) {
-        console.error("Error processing command:", e);
-      } finally {
-        // Remove the processed item from queue
-        setProcessingQueue((prev) => prev.slice(1));
-        setIsProcessing(false);
-      }
-    };
-
-    processQueue();
-  }, [processingQueue, isProcessing, history, transcript]);
 
   // --- Deepgram Setup ---
 
@@ -180,12 +84,8 @@ export default function TestDeepgramGroqIntegration() {
 
       // Add to processing queue
       console.log("Endpoint detected, queuing:", finalLine);
-      setProcessingQueue((prev) => [...prev, finalLine]);
+      processCommand(finalLine);
     };
-
-    // We can also listen to UtteranceEnd if we want to capture things that didn't trigger speech_final
-    // but for now let's stick to speech_final/is_final from the transcript which usually carries the text.
-    // UtteranceEnd often comes *after* without text payload, just a signal.
 
     microphone.addEventListener(MicrophoneEvents.DataAvailable, onData);
     connection.addListener(LiveTranscriptionEvents.Transcript, onTranscript);
@@ -199,14 +99,13 @@ export default function TestDeepgramGroqIntegration() {
         onTranscript
       );
     };
-  }, [microphone, connection, connectionState, startMicrophone]);
-
-  const resetState = () => {
-    setHistory(new OpenHandHistory().toJSON().ohh);
-    setPatchHistory([]);
-    setProcessingQueue([]);
-    setTranscript([]);
-  };
+  }, [
+    microphone,
+    connection,
+    connectionState,
+    startMicrophone,
+    processCommand,
+  ]);
 
   const copyToClipboard = (data: any) => {
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));

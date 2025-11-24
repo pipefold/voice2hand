@@ -1,70 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { OpenHandHistory } from "@/app/lib/OpenHandHistory";
-import { applyPatch, Operation } from "rfc6902";
-import { generateHandHistoryPatch } from "./action";
+import { useVoiceHandHistory } from "@/app/hooks/useVoiceHandHistory";
 
 export default function TestGroqJsonPatchPage() {
-  // Initialize with a fresh state, using a fixed date to prevent hydration mismatch
-  const [history, setHistory] = useState(
-    () =>
-      new OpenHandHistory({ startDateUTC: "2023-01-01T00:00:00.000Z" }).toJSON()
-        .ohh
-  );
+  const {
+    history,
+    patchHistory,
+    transcript,
+    isProcessing,
+    processCommand,
+    resetState,
+  } = useVoiceHandHistory();
+
   const [input, setInput] = useState("5-handed and I'm under the gun");
-  const [transcript, setTranscript] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [lastPatch, setLastPatch] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-
-    // We send a simplified context to the AI to save tokens/complexity
-    // For this test, we send the basic table setup info
-    const context = {
-      table_size: history.table_size,
-      players: history.players,
-      dealer_seat: history.dealer_seat,
-      small_blind_amount: history.small_blind_amount,
-      big_blind_amount: history.big_blind_amount,
-    };
-
-    const result = await generateHandHistoryPatch(input, transcript, context);
-
-    if (result.success && result.patches) {
-      setLastPatch(result.patches);
-
-      // Create a deep clone to apply patch immutably-ish
-      const newHistory = JSON.parse(JSON.stringify(history));
-
-      // Apply the patch
-      const results = applyPatch(newHistory, result.patches as Operation[]);
-      const firstError = results.find((result) => result !== null);
-
-      if (!firstError) {
-        // Update state
-        setHistory(newHistory);
-        setTranscript((prev) => [...prev, input]);
-        setInput("");
-      } else {
-        console.error("Patch failed:", firstError);
-        alert("Patch application failed (see console)");
-      }
-    } else {
-      alert("Failed to generate patch");
-    }
-
-    setLoading(false);
+    processCommand(input);
+    setInput("");
   };
 
-  const resetState = () => {
-    setHistory(new OpenHandHistory().toJSON().ohh);
-    setLastPatch(null);
-    setTranscript([]);
-    setInput("5-handed and I'm under the gun");
-  };
+  const lastPatch = patchHistory[0]?.patches;
 
   return (
     <div className="p-8 max-w-4xl mx-auto font-sans">
@@ -98,10 +55,10 @@ export default function TestGroqJsonPatchPage() {
             </div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={isProcessing}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "Generating Patch..." : "Send to Groq"}
+              {isProcessing ? "Generating Patch..." : "Send to Groq"}
             </button>
           </form>
 
