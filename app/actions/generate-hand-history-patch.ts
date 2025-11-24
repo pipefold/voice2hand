@@ -114,10 +114,32 @@ export async function generateHandHistoryPatch(
 
         9. Transcription Corrections:
            - "an eye check" / "an eye" -> Interpret as "and I check" / "and I".
-           - If a sentence seems nonsensical (e.g. "SB completes an eye check"), assume the user meant "SB calls, and I check".
-           - The Small Blind cannot "Check" pre-flop unless they have already limped. If they "complete", it means they Call.
+           - "core" / "called" / "calls" -> Interpret "core" as "Call" (common ASR error).
+           - "bottom" -> Interpret as "Button".
+           - "gun" / "under the gun" -> Interpret as "UTG".
 
-        10. Stack Sizes:
+        10. Narrative Handling:
+           - If the user describes a player's action with narrative phrasing like "who has been X-ing... to about Y" (e.g. "The BB who's been 3-betting to 30"), interpret this as the player performing action X to amount Y in the current game state.
+           - "Me and the bottom both core" -> "Hero calls, Button calls".
+
+        11. Incomplete Sentences / Trailing Subjects:
+           - If a transcript segment ends with a player name or partial phrase without an action (e.g. "The big", "And then the"), DO NOT hallucinate an action for them.
+           - Wait for the next segment to provide the action.
+           - It is better to produce NO patches for an ambiguous segment than to guess wrong.
+
+        12. Implicit Folds / Skipped Players:
+           - If the action skips over a player who has cards (e.g. UTG raises, then Button calls), assume the intervening players (MP, CO) FOLDED.
+           - If a player is not mentioned in a calling sequence closing the action (e.g. "Me and button call" -> SB and BB are not mentioned), do NOT generate Call actions for them.
+           - Only generate actions for players explicitly mentioned or implied by "everyone calls".
+
+        13. Multi-Step & Street Transition Logic:
+           - If a user input contains actions for the current street AND announces the next street (e.g., "Me and button call. Flop is..."), you MUST:
+             1. First, generate "add" patches for the missing actions (Calls) in the CURRENT round (Preflop).
+             2. THEN, generate "add" patches for the NEW round (Flop).
+           - Do NOT skip the intermediate actions.
+           - Do NOT put pre-flop actions into the Flop round.
+
+        11. Stack Sizes:
            - If the user does not specify a stack size for a player, assume the starting stack is 100BBs (100 * big_blind_amount).
 
         11. Pre-flop Blind Posting:
