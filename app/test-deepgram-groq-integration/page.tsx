@@ -16,7 +16,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { applyPatch, Operation } from "rfc6902";
 
 const ENDPOINTING_MS = 500;
-const UTTERANCE_END_MS = 1200;
 
 export default function TestDeepgramGroqIntegration() {
   // --- Groq / Game State ---
@@ -25,8 +24,16 @@ export default function TestDeepgramGroqIntegration() {
       new OpenHandHistory({ startDateUTC: "2023-01-01T00:00:00.000Z" }).toJSON()
         .ohh
   );
-  const [lastPatch, setLastPatch] = useState<any>(null);
+  const [patchHistory, setPatchHistory] = useState<
+    {
+      command: string;
+      patches: any;
+      timestamp: string;
+      error?: any;
+    }[]
+  >([]);
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
+  const [transcript, setTranscript] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // --- Deepgram / Audio State ---
@@ -42,25 +49,6 @@ export default function TestDeepgramGroqIntegration() {
 
   // --- Command Processing Logic ---
 
-  const processCommand = useCallback(async (commandText: string) => {
-    console.log("Processing command:", commandText);
-
-    // We use the functional update to ensure we get the absolute latest state
-    // However, we need the state *value* to pass to the AI.
-    // Since this is async and queued, we rely on the 'history' state being up to date
-    // when this function executes.
-    // NOTE: In a real queue system, we'd need to be careful about state closure staleness.
-    // Here, we will trust React's state if we manage the queue sequentially.
-
-    // To avoid closure staleness, we might need to use a ref for the current history
-    // or pass it in if we were chaining.
-    // Let's use a Ref for history to be safe for the async operations
-
-    // Actually, let's just use the current 'history' from the render scope.
-    // But wait, 'processCommand' is created once? No, we need it to access latest history.
-    // The useEffect handling the queue will need to depend on 'history'.
-  }, []); // We'll implement the actual logic inside the effect that watches the queue
-
   // Queue watcher
   useEffect(() => {
     const processQueue = async () => {
@@ -74,32 +62,58 @@ export default function TestDeepgramGroqIntegration() {
           table_size: history.table_size,
           players: history.players,
           dealer_seat: history.dealer_seat,
+          rounds: history.rounds,
         };
 
-        const result = await generateHandHistoryPatch(command, context);
+        const result = await generateHandHistoryPatch(
+          command,
+          transcript,
+          context
+        );
 
         if (result.success && result.patches) {
-          setLastPatch(result.patches);
-
           // Apply patch
-          // Note: We read 'history' again here or use the functional update
-          // Ideally we patch the latest state.
+          const tempHistory = JSON.parse(JSON.stringify(history));
+          const results = applyPatch(
+            tempHistory,
+            result.patches as Operation[]
+          );
+          const firstError = results.find((r) => r !== null);
 
-          setHistory((prevHistory: any) => {
-            const newHistory = JSON.parse(JSON.stringify(prevHistory));
-            const results = applyPatch(
-              newHistory,
-              result.patches as Operation[]
-            );
-            const firstError = results.find((r) => r !== null);
-            if (firstError) {
-              console.error("Patch failed:", firstError);
-              return prevHistory; // Revert/Ignore if failed
-            }
-            return newHistory;
-          });
+          setPatchHistory((prev) => [
+            {
+              command,
+              patches: result.patches,
+              timestamp: new Date().toLocaleTimeString(),
+              error: firstError,
+            },
+            ...prev,
+          ]);
+
+          // Always update transcript so context is preserved, even if patch failed
+          setTranscript((prev) => [...prev, command]);
+
+          if (firstError) {
+            console.error("Patch failed:", firstError);
+          } else {
+            setHistory(tempHistory);
+          }
         } else {
           console.warn("Failed to generate patch for:", command);
+
+          // Track generation failures
+          setPatchHistory((prev) => [
+            {
+              command,
+              patches: null,
+              timestamp: new Date().toLocaleTimeString(),
+              error: result.error || "Failed to generate patch",
+            },
+            ...prev,
+          ]);
+
+          // Keep command in transcript so we have context
+          setTranscript((prev) => [...prev, command]);
         }
       } catch (e) {
         console.error("Error processing command:", e);
@@ -111,7 +125,7 @@ export default function TestDeepgramGroqIntegration() {
     };
 
     processQueue();
-  }, [processingQueue, isProcessing, history]);
+  }, [processingQueue, isProcessing, history, transcript]);
 
   // --- Deepgram Setup ---
 
@@ -129,7 +143,6 @@ export default function TestDeepgramGroqIntegration() {
       interim_results: true,
       smart_format: true,
       endpointing: ENDPOINTING_MS,
-      utterance_end_ms: UTTERANCE_END_MS,
       vad_events: true,
     });
   };
@@ -190,8 +203,13 @@ export default function TestDeepgramGroqIntegration() {
 
   const resetState = () => {
     setHistory(new OpenHandHistory().toJSON().ohh);
-    setLastPatch(null);
+    setPatchHistory([]);
     setProcessingQueue([]);
+    setTranscript([]);
+  };
+
+  const copyToClipboard = (data: any) => {
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
   };
 
   return (
@@ -225,68 +243,102 @@ export default function TestDeepgramGroqIntegration() {
             </div>
           </div>
 
+          {/* Transcript Debug */}
+          <div className="p-4 bg-slate-50 border rounded-lg">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm font-bold text-gray-500 uppercase">
+                Transcript Array (Debug)
+              </h3>
+              <button
+                onClick={() => copyToClipboard(transcript)}
+                className="text-xs text-blue-600 hover:text-blue-800 underline"
+              >
+                Copy
+              </button>
+            </div>
+            <pre className="text-xs overflow-auto max-h-40 bg-white p-2 border text-gray-900 font-mono">
+              {JSON.stringify(transcript, null, 2)}
+            </pre>
+          </div>
+
           {/* Live Transcript */}
           <div className="p-4 bg-slate-50 border rounded-lg">
             <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
               Live Transcript
             </h3>
-            <p className="text-lg text-slate-800 min-h-[3rem]">
+            <p className="text-lg text-slate-800 min-h-12">
               {transcriptText || (
                 <span className="text-gray-400 italic">(speak now...)</span>
               )}
             </p>
           </div>
 
-          {/* Queue Status */}
-          <div className="p-4 bg-slate-50 border rounded-lg">
-            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
-              Processing Queue
-            </h3>
-            {processingQueue.length === 0 && !isProcessing ? (
-              <p className="text-sm text-gray-400">(empty)</p>
-            ) : (
-              <ul className="space-y-2">
-                {isProcessing && (
-                  <li className="text-sm text-blue-600 flex items-center animate-pulse">
-                    <span className="mr-2">➤</span> Processing: "
-                    {processingQueue[0]}"...
-                  </li>
-                )}
-                {processingQueue.slice(isProcessing ? 1 : 0).map((cmd, i) => (
-                  <li key={i} className="text-sm text-gray-600">
-                    • {cmd}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Last Patch */}
+          {/* Patch History */}
           <div className="p-4 bg-gray-100 rounded">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-bold text-sm text-gray-700">
-                Last Applied Patch
-              </h3>
-              <button
-                onClick={resetState}
-                className="text-xs text-red-600 underline"
-              >
-                Reset State
-              </button>
+              <h3 className="font-bold text-sm text-gray-700">Patch History</h3>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => copyToClipboard(patchHistory)}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  Copy
+                </button>
+                <button
+                  onClick={resetState}
+                  className="text-xs text-red-600 underline"
+                >
+                  Reset State
+                </button>
+              </div>
             </div>
-            <pre className="text-xs overflow-auto max-h-40 bg-white p-2 border text-gray-900">
-              {lastPatch
-                ? JSON.stringify(lastPatch, null, 2)
-                : "(No patches applied yet)"}
-            </pre>
+            {patchHistory.length > 0 ? (
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                {patchHistory.map((patch, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white border rounded-lg p-3 text-xs shadow-sm"
+                  >
+                    <div className="border-b pb-2 mb-2 text-gray-500">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-gray-700">
+                          "{patch.command}"
+                        </span>
+                        <span>{patch.timestamp}</span>
+                      </div>
+                      {patch.error && (
+                        <div className="mt-1 text-red-600 font-bold bg-red-50 p-1 rounded">
+                          Error: {JSON.stringify(patch.error)}
+                        </div>
+                      )}
+                    </div>
+                    <pre className="overflow-auto max-h-32 text-gray-600">
+                      {JSON.stringify(patch.patches, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500 italic">
+                (No patches applied yet)
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right Column: Game State */}
         <div>
-          <h3 className="font-bold text-sm mb-2 text-gray-700">
-            Current Game State (OpenHandHistory)
-          </h3>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-sm text-gray-700">
+              Current Game State (OpenHandHistory)
+            </h3>
+            <button
+              onClick={() => copyToClipboard(history)}
+              className="text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              Copy
+            </button>
+          </div>
           <div className="bg-slate-900 text-green-400 p-4 rounded-lg text-xs font-mono overflow-auto h-[600px] shadow-inner">
             <pre>{JSON.stringify(history, null, 2)}</pre>
           </div>

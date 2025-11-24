@@ -24,6 +24,7 @@ const patchSchema = z.object({
 
 export async function generateHandHistoryPatch(
   userInput: string,
+  previousTranscript: string[],
   currentStateContext: any
 ) {
   try {
@@ -76,6 +77,7 @@ export async function generateHandHistoryPatch(
            - 8-handed: SB=1, BB=2, UTG=3, UTG+1=4, LJ=5, HJ=6, CO=7, Button=8
            - 6-handed: SB=1, BB=2, UTG=3, MP=4, CO=5, Button=6
            - Heads-up (2-handed): Button/SB=1, BB=2 (Exception: Button acts first preflop).
+           - Extrapolate other table sizes beyond these examples.
 
         3. If the user says "I am [Position]" (e.g. "I'm UTG"):
            - Ensure 'table_size' is set (default to 8 if unknown).
@@ -90,27 +92,60 @@ export async function generateHandHistoryPatch(
            - If user says "one two" or "1/2", set small_blind_amount=1, big_blind_amount=2.
            - If user says "six max" or "6 max", set table_size=6.
            - If user says "nine handed" or "9 handed", set table_size=9.
+           - Extrapolate other table sizes and stakes beyond these examples.
 
         6. Patch Strategy:
            - If the player already exists, prefer "replace" operations on their fields.
-           - Only use "add" for new players.
+           - If a round for a street already exists (e.g. "Preflop"), prefer "replace" operations on that round's fields or "add" to its "actions" array.
+           - If a round for the street DOES NOT exist (e.g. moving to "Flop"), use "add" to append to the "/rounds/-" path.
+           - CRITICAL: NEVER "replace" or "add" the root "/rounds" array itself if rounds already exist. Always append or modify specific indices.
+           - Only use "add" for new players or new rounds.
         
-        7. Terminology & Aggression:
-           - "3-bet": This is a re-raise. 
-             - Pre-flop: Open raise -> 3-bet. 
-             - Post-flop: Bet -> Raise -> 3-bet.
-           - If a player "3-bets", find the current active bet amount and increase it substantially (or to the specified amount).
+        7. Terminology:
            - "Hero": Refers to the player with 'hero_player_id'.
+           - "Completes": Specifically refers to the Small Blind calling the difference to match the Big Blind amount pre-flop. Treat this as a "Call" action.
+           - "3-bet" = a re-raise following a raise following an opening bet
+             - pre-flop: the big blind or straddle is considered the first bet; confusingly the first raise is considered an "open(ing)" raise, so a 3-bet is a re-raise of an opening raise
+             - post-flop: a bet followed by a raise followed by a re-raise is considered a 3-bet
+           - "4-bet" = a re-raise following a 3-bet
+           - "Limp": A call of the big blind amount pre-flop.
 
         8. Output ONLY the JSON patch array wrapped in the 'patches' object.
 
-        9. Stack Sizes:
-           - If the user does not specify a stack size for a player, assume the starting stack is 100 * big_blind_amount (100 BBs).
+        9. Transcription Corrections:
+           - "an eye check" / "an eye" -> Interpret as "and I check" / "and I".
+           - If a sentence seems nonsensical (e.g. "SB completes an eye check"), assume the user meant "SB calls, and I check".
+           - The Small Blind cannot "Check" pre-flop unless they have already limped. If they "complete", it means they Call.
+
+        10. Stack Sizes:
+           - If the user does not specify a stack size for a player, assume the starting stack is 100BBs (100 * big_blind_amount).
+
+        11. Pre-flop Blind Posting:
+           - The "Preflop" round MUST start with the posting of blinds.
+           - Action 1: "Post SB" (Small Blind) by the player in the SB seat.
+           - Action 2: "Post BB" (Big Blind) by the player in the BB seat.
+           - Only generate these actions if the user is describing a valid game setup or game action (e.g. "I was dealt Aces", "UTG raises"). 
+           - If the user input is conversational (e.g. "testing", "can you hear me") and NOT a game action, DO NOT generate blind posting actions. Return an empty patch array.
+
+        12. Corrections and Out-of-Order Info (CRITICAL):
+            - If the user provides information that contradicts or precedes recorded actions (e.g. "There were 3 limpers" after previously recording "I check"), you MUST correct the history.
+            - You cannot simply append actions if they belong earlier in the timeline.
+            - Use "remove" operations to delete incorrect actions or actions that need to be moved.
+            - Use "add" operations (with specific array indices like "/rounds/0/actions/2") to insert actions in the correct chronological order.
+            - Example: If BB Checked (Action 3), but then user says "UTG called", you must insert the UTG Call at Action 3, and shift the BB Check to Action 4 (or remove and re-add it).
+        
+        13. Commentary / No-Op:
+            - If the user's input is commentary (e.g. "bad beat", "that's crazy") or describes state that is ALREADY recorded (e.g. "it's a rainbow flop" when the flop cards are already different suits), DO NOT generate patches that duplicate data.
+            - Return an empty 'patches' array: []
+            - Do not fail; just return empty patches.
       `,
       prompt: `
         Current State Context: ${JSON.stringify(currentStateContext)}
         
-        User Command: "${userInput}"
+        Previous Transcript Segments:
+        ${JSON.stringify(previousTranscript)}
+
+        Latest Transcript Segment: "${userInput}"
       `,
     });
 
