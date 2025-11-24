@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as dotenv from "dotenv";
 import { generateHandHistoryPatch } from "./action";
-import { OpenHandHistory } from "../lib/OpenHandHistory";
+import { OpenHandHistory } from "../../lib/OpenHandHistory";
 import { applyPatch, Operation } from "rfc6902";
 
 // Load environment variables
@@ -10,7 +10,7 @@ dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 // Helper to run the flow
-async function processCommand(command: string, initialState: any = null) {
+async function processCommand(userInput: string, initialState: any = null) {
   const state = initialState || new OpenHandHistory().toJSON().ohh;
 
   const context = {
@@ -21,7 +21,7 @@ async function processCommand(command: string, initialState: any = null) {
     big_blind_amount: state.big_blind_amount,
   };
 
-  const result = await generateHandHistoryPatch(command, context);
+  const result = await generateHandHistoryPatch(userInput, [], context);
 
   if (!result.success || !result.patches) {
     throw new Error(

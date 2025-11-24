@@ -11,7 +11,7 @@ import {
   useMicrophone,
 } from "@/app/context/MicrophoneContextProvider";
 import { OpenHandHistory } from "@/app/lib/OpenHandHistory";
-import { generateHandHistoryPatch } from "@/app/test-groq-json-patch/action";
+import { generateHandHistoryPatch } from "@/app/prototypes/groq-json-patcher/action";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyPatch, Operation } from "rfc6902";
 

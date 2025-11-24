@@ -1,4 +1,4 @@
-import { OpenHandHistory } from "../lib/OpenHandHistory";
+import { OpenHandHistory } from "../../lib/OpenHandHistory";
 
 const handHistory = buildHandHistory();
 
@@ -140,5 +140,3 @@ function buildHandHistory() {
 
   return ohh.toJSON().ohh;
 }
-
-
