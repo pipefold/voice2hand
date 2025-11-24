@@ -38,6 +38,7 @@ const POKER_KEYTERMS = [
   "dealer",
   "small blind",
   "big blind",
+  "complete",
   "utg",
   "hijack",
   "cutoff",
