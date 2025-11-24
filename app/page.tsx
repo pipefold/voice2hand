@@ -2,14 +2,27 @@ import Link from "next/link";
 
 const testPages = [
   {
-    href: "/test-deepgram",
-    title: "Deepgram Live Transcription",
-    description: "Wire up microphone streaming into Deepgram’s realtime API.",
+    href: "/prototypes/deepgram-basic",
+    title: "Deepgram Basic",
+    description:
+      "Basic Deepgram integration with live transcription, endpointing, and utterance detection.",
   },
   {
-    href: "/test-open-hand",
-    title: "OpenHand Tracker UI",
-    description: "Render a mocked poker hand using open-hand-tracker.",
+    href: "/prototypes/deepgram-groq-patcher",
+    title: "Deepgram + Groq Patcher",
+    description:
+      "Voice-controlled state management: Deepgram transcript → Groq JSON Patch → OpenHandHistory.",
+  },
+  {
+    href: "/prototypes/groq-json-patcher",
+    title: "Groq JSON Patcher",
+    description:
+      "Manual text input to test Groq's ability to generate RFC 6902 patches for game state.",
+  },
+  {
+    href: "/prototypes/open-hand-history",
+    title: "OpenHand History UI",
+    description: "Visualizer for OpenHandHistory data structures.",
   },
 ];
 

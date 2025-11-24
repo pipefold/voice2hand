@@ -86,6 +86,7 @@ export async function generateHandHistoryPatch(
            - Place that player in the specific seat mapped above (e.g. if UTG, Seat 3).
         
         4. Card Format: Always use Uppercase Rank + Lowercase Suit (e.g., "As", "Ah", "Kd", "Tc").
+           - CRITICAL: Use "T" for Ten, NEVER "10". (e.g. "Ts", not "10s").
         
         5. Stakes and Game Type:
            - If user says "two five" or "2/5", set small_blind_amount=2, big_blind_amount=5.
@@ -95,7 +96,8 @@ export async function generateHandHistoryPatch(
            - Extrapolate other table sizes and stakes beyond these examples.
 
         6. Patch Strategy:
-           - If the player already exists, prefer "replace" operations on their fields.
+           - Use "add" to set a value for a field that might not exist yet (e.g. adding "cards" to a player).
+           - Use "replace" ONLY if you are certain the field already exists (e.g. updating "stack").
            - If a round for a street already exists (e.g. "Preflop"), prefer "replace" operations on that round's fields or "add" to its "actions" array.
            - If a round for the street DOES NOT exist (e.g. moving to "Flop"), use "add" to append to the "/rounds/-" path.
            - CRITICAL: NEVER "replace" or "add" the root "/rounds" array itself if rounds already exist. Always append or modify specific indices.
@@ -117,6 +119,7 @@ export async function generateHandHistoryPatch(
            - "core" / "called" / "calls" -> Interpret "core" as "Call" (common ASR error).
            - "bottom" -> Interpret as "Button".
            - "gun" / "under the gun" -> Interpret as "UTG".
+           - "gun plus one" / "onto the gun plus one" -> Interpret as "UTG+1".
 
         10. Narrative Handling:
            - If the user describes a player's action with narrative phrasing like "who has been X-ing... to about Y" (e.g. "The BB who's been 3-betting to 30"), interpret this as the player performing action X to amount Y in the current game state.
@@ -142,14 +145,20 @@ export async function generateHandHistoryPatch(
         11. Stack Sizes:
            - If the user does not specify a stack size for a player, assume the starting stack is 100BBs (100 * big_blind_amount).
 
-        11. Pre-flop Blind Posting:
-           - The "Preflop" round MUST start with the posting of blinds.
-           - Action 1: "Post SB" (Small Blind) by the player in the SB seat.
-           - Action 2: "Post BB" (Big Blind) by the player in the BB seat.
-           - Only generate these actions if the user is describing a valid game setup or game action (e.g. "I was dealt Aces", "UTG raises"). 
-           - If the user input is conversational (e.g. "testing", "can you hear me") and NOT a game action, DO NOT generate blind posting actions. Return an empty patch array.
+        12. Amount Logic (CRITICAL):
+           - "Call": The amount MUST match the highest "Bet", "Raise", or "Post BB" amount in the current round.
+             - Example: If P1 raises to 7, P2 calls. P2's action is "Call", amount: 7 (NOT 5, NOT the difference).
+           - "Raise" / "Bet": The amount is the TOTAL value the player puts in for the street (e.g. "Raise to 30" -> amount: 30).
+           - "Post SB" / "Post BB": The amount is the absolute blind size (e.g. 1 or 2).
 
-        12. Corrections and Out-of-Order Info (CRITICAL):
+        13. Pre-flop Blind Posting (MANDATORY):
+           - If the "Preflop" round does not exist yet, and the user describes dealing cards (e.g. "I get dealt...") or the first action (e.g. "UTG raises"), you MUST:
+             1. Create the "Preflop" round.
+             2. Add "Post SB" (Action 1) and "Post BB" (Action 2).
+             3. Add the user's described action (e.g. "Dealt Card" or "Raise").
+           - Ensure the SB and BB players exist in the 'players' array before posting blinds.
+
+        14. Corrections and Out-of-Order Info (CRITICAL):
             - If the user provides information that contradicts or precedes recorded actions (e.g. "There were 3 limpers" after previously recording "I check"), you MUST correct the history.
             - You cannot simply append actions if they belong earlier in the timeline.
             - Use "remove" operations to delete incorrect actions or actions that need to be moved.
