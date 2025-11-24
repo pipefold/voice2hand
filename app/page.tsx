@@ -24,6 +24,12 @@ const testPages = [
     title: "OpenHand History UI",
     description: "Visualizer for OpenHandHistory data structures.",
   },
+  {
+    href: "/prototypes/voice-driven-replayer",
+    title: "Voice Driven Replayer",
+    description:
+      "Real-time voice control of poker hand history replayer using Deepgram and Groq.",
+  },
 ];
 
 export default function Home() {

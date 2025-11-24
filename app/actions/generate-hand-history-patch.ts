@@ -67,7 +67,15 @@ export async function generateHandHistoryPatch(
 
         Rules:
         1. Seat numbering is 1-indexed.
-        2. Default Positioning Assumption (unless specific seats are given):
+
+        2. Table Population & Defaults (CRITICAL):
+           - Default to table_size = 8 unless user specifies otherwise (e.g. "6-max", "9-handed", "Heads up").
+           - You MUST populate the 'players' array with a player for EVERY seat (1 to table_size).
+           - For seats where the player is not explicitly identified (like Hero, Button), create a generic player:
+             { id: [seat_number], name: "P[seat_number]", seat: [seat_number], starting_stack: 100 * big_blind_amount }
+           - This ensures the visualizer shows a full table, not empty seats. Uninvolved players will simply Fold.
+
+        3. Default Positioning Assumption (unless specific seats are given):
            - Assume the Button (Dealer) is at the LAST seat (Seat = table_size).
            - Assume Small Blind is Seat 1.
            - Assume Big Blind is Seat 2.
@@ -186,4 +194,3 @@ export async function generateHandHistoryPatch(
     return { success: false, error: "Failed to generate patch" };
   }
 }
-
