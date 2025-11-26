@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Voice2Hand
 
-## Getting Started
+**Voice2Hand** is a voice-driven poker hand history recorder and visualizer. It
+allows players to narrate a poker hand in real-time (or post-session) and
+instantly converts that speech into a structured **OpenHandHistory (OHH)**
+format, visualizing the action on a replay board.
 
-First, run the development server:
+## 🚀 Features
+
+- **🎙️ Voice-to-Code**: Uses **Deepgram** for high-speed, accurate
+  speech-to-text transcription.
+- **🧠 AI State Management**: Uses **Groq** (LLM) to interpret natural language
+  poker actions ("UTG raises to 15", "Button calls") and generate **RFC 6902
+  JSON Patches** to update the game state incrementally.
+- **🃏 Real-time Replayer**: Visualizes the hand history on a poker table
+  component as you speak, handling seat mapping, dealer button logic, and pot
+  calculations.
+- **📜 OpenHandHistory**: Built around the OpenHandHistory specification for
+  interoperable hand data.
+
+## 🛠️ Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **AI & Voice**:
+  - [Deepgram SDK](https://deepgram.com/) (Speech-to-Text)
+  - [Groq](https://groq.com/) (LLM Inference via Vercel AI SDK)
+- **State Logic**: Custom Poker State Calculator & JSON Patching (`rfc6902`)
+
+## 📦 Getting Started
+
+### 1. Prerequisites
+
+You will need API keys for:
+
+- **Deepgram**: For voice transcription.
+- **Groq**: For fast LLM inference (parsing speech to JSON patches).
+
+### 2. Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/your-username/voice2hand.git
+cd voice2hand
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Environment Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Create a `.env.local` file in the root directory:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+DEEPGRAM_API_KEY=your_deepgram_key_here
+GROQ_API_KEY=your_groq_key_here
+```
 
-## Learn More
+### 4. Run Development Server
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open [http://localhost:3000](http://localhost:3000) to see the prototype hub.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🧪 Prototypes
 
-## Deploy on Vercel
+The project is structured as a collection of prototypes to test different parts
+of the pipeline. You can access them from the main dashboard:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Path                                | Description                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `/prototypes/deepgram-basic`        | Simple test of Deepgram live transcription and endpointing.                                       |
+| `/prototypes/groq-json-patcher`     | Manual text input to test the LLM's ability to generate valid JSON patches for game state.        |
+| `/prototypes/voice-driven-replayer` | **The Main Demo**. Combines Deepgram + Groq + Replayer UI for a full voice-controlled experience. |
+| `/prototypes/open-hand-history`     | Visualizer for static OpenHandHistory data structures.                                            |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🧩 Architecture Overview
+
+1. **Input**: Microphone audio is streamed to Deepgram.
+2. **Transcription**: Deepgram returns text transcripts.
+3. **Processing**:
+   - The transcript is sent to a Server Action (`generateHandHistoryPatch`).
+   - Groq (LLM) receives the current game state + new transcript.
+   - Groq outputs an RFC 6902 JSON Patch (e.g.,
+     `{ "op": "add", "path": "/rounds/0/actions/-", "value": { "action": "Raise", "amount": 20 } }`).
+4. **State Update**: The frontend applies the patch to the local
+   `OpenHandHistory` object.
+5. **Visualization**: The `HandReplayer` component reacts to state changes and
+   updates the UI (chips, cards, dealer button).
