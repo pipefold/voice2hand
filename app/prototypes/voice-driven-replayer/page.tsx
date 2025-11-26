@@ -13,19 +13,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useVoiceHandHistory } from "@/app/hooks/useVoiceHandHistory";
 import { HandReplayer } from "@/app/components/HandReplayer";
+import { MOCK_TRANSCRIPTS } from "@/app/lib/mock-transcripts";
 
 const ENDPOINTING_MS = 500;
-
-const MOCK_TRANSCRIPT = [
-  "So I'm onto the gun plus one.",
-  "I get dealt nine ten suited spades.",
-  "And I raise to seven.",
-  "So three and a half x the big blind.",
-  "I get called by the button.",
-  "The big blind who's been three betting a lot of three bets to about",
-  "three or four x. Yeah. It's about 30.",
-  "Me and the bottom both core. The flop comes 10 jack, queen.",
-];
 
 export default function VoiceDrivenReplayerPage() {
   // --- Groq / Game State ---
@@ -36,6 +26,7 @@ export default function VoiceDrivenReplayerPage() {
   const [status, setStatus] = useState<string>("idle");
   const [transcriptText, setTranscriptText] = useState<string>("");
   const [isSimulating, setIsSimulating] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState<keyof typeof MOCK_TRANSCRIPTS>("standard");
 
   const { connection, connectToDeepgram, connectionState } = useDeepgram();
   const { setupMicrophone, microphone, startMicrophone } = useMicrophone();
@@ -49,9 +40,11 @@ export default function VoiceDrivenReplayerPage() {
 
     resetState();
     setIsSimulating(true);
-    setStatus("simulating scenario...");
+    setStatus(`simulating ${MOCK_TRANSCRIPTS[selectedScenario].label}...`);
 
-    for (const line of MOCK_TRANSCRIPT) {
+    const lines = MOCK_TRANSCRIPTS[selectedScenario].lines;
+
+    for (const line of lines) {
       setTranscriptText(line);
       processCommand(line);
       // Wait 2.5s to simulate speaking time/pauses
@@ -171,6 +164,23 @@ export default function VoiceDrivenReplayerPage() {
               <p className="text-xs text-gray-500 mb-2 uppercase font-semibold">
                 Dev Tools
               </p>
+              
+              <div className="mb-3">
+                <label className="block text-xs text-gray-500 mb-1">Scenario</label>
+                <select
+                  value={selectedScenario}
+                  onChange={(e) => setSelectedScenario(e.target.value as any)}
+                  disabled={isSimulating}
+                  className="w-full px-3 py-2 text-sm border rounded bg-gray-50 text-gray-700"
+                >
+                  {Object.entries(MOCK_TRANSCRIPTS).map(([key, { label }]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 onClick={runSimulation}
                 disabled={

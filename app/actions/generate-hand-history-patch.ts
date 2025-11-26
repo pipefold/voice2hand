@@ -29,7 +29,7 @@ export async function generateHandHistoryPatch(
 ) {
   try {
     const { object } = await generateObject({
-      model: groq("openai/gpt-oss-20b"),
+      model: groq("openai/gpt-oss-120b"),
       mode: "json",
       schema: patchSchema,
       system: `
@@ -93,25 +93,67 @@ export async function generateHandHistoryPatch(
            - Ensure a player with 'hero_player_id' exists.
            - Place that player in the specific seat mapped above (e.g. if UTG, Seat 3).
         
-        4. Card Format: Always use Uppercase Rank + Lowercase Suit (e.g., "As", "Ah", "Kd", "Tc").
+        4. Card Format & Assignment:
+           - Always use Uppercase Rank + Lowercase Suit (e.g., "As", "Ah", "Kd", "Tc").
            - CRITICAL: Use "T" for Ten, NEVER "10". (e.g. "Ts", not "10s").
+           - "Ace" -> "A", "King" -> "K", "Queen" -> "Q", "Jack" -> "J", "Ten" -> "T"
+           - "Nine" -> "9", "Eight" -> "8", "Seven" -> "7", "Six" -> "6", "Five" -> "5"
+           - "Four" -> "4", "Three" -> "3", "Two"/"Deuce" -> "2"
+           - When the user mentions cards (e.g. "Ace King", "pocket sevens", "seven eight nine"), convert them to standard notation.
+           - If suits are unknown, infer logical distinct suits (s, h, d, c) or assume "h" and "d" if "hearts" is mentioned etc.
+           - "pocket sevens" -> ["7h", "7d"] (or similar pair)
+           - "pocket tens" -> ["Ts", "Th"]
+           - "Ace King" -> ["Ax", "Kx"] (map ranks A, K)
+
+           - ASSIGNMENT RULE (MANDATORY):
+             - When a player is dealt cards (e.g. "I get dealt..."), you MUST add the 'cards' field to that PLAYER object in the '/players' array.
+             - Example Patch: { "op": "add", "path": "/players/3/cards", "value": ["As", "Kd"] }
+             - Do NOT just put the cards in the "Dealt Card" action. They MUST be on the player object for the state to be valid.
         
-        5. Stakes and Game Type:
+        5. Board Cards Handling:
+           - When the user announces board cards (Flop, Turn, River), you MUST map them to the standard 2-character format (Rank + Suit).
+           - Rank Mapping (CRITICAL):
+             - "Ace" -> "A", "King" -> "K", "Queen" -> "Q", "Jack" -> "J", "Ten" -> "T"
+             - "Nine" -> "9", "Eight" -> "8", "Seven" -> "7", "Six" -> "6", "Five" -> "5", "Four" -> "4", "Three" -> "3", "Deuce"/"Two" -> "2"
+           - Example: "Flop comes Ace, seven, deuce rainbow" -> The ranks are "Ace" (A), "seven" (7), "deuce" (2). Result: ["As", "7h", "2d"] (or similar).
+           - Example: "Turn is a King" -> Rank is "King" (K). Result: Add "Kc" (or inferred suit).
+             - NOTE: If appending a SINGLE card to the board, do NOT use 'x' as a suit placeholder. Use a valid suit (s, h, d, c). If unknown, pick 'c' (clubs) or 's' (spades).
+             - "Turn is a King" -> value: "Kc" (NOT "Kx")
+           - Comma-Separated Lists: "seven, eight, nine, two hearts" -> Ranks are 7, 8, 9. Result: ["7h", "8h", "9h"].
+             - If a user says "seven, eight, nine", and then "two hearts", it likely means the BOARD is 7, 8, 9, and then the next card is 2h, OR it means the board is 7, 8, 9, 2h. Use context.
+             - If "Flop is seven, eight, nine, two hearts" -> This is ambiguous (4 cards on flop?). Assume "two hearts" describes the SUIT distribution (e.g. "two of the cards are hearts") OR it's a 4-card board (Omaha?). 
+             - STANDARD HOLDEM: Flop has 3 cards. "seven eight nine two hearts" -> likely means 7, 8, 9, with 2 of them being hearts.
+             - HOWEVER, for simplicity, if the list has 3+ items, treat them as ranks.
+           - NEVER output full words like "Ace" or "Seven" in the 'cards' array. ALWAYS use the single-character rank.
+           - Board State Logic:
+             - If creating a new round for a new street (e.g. moving from Flop to Turn):
+               - You MUST include ALL previous board cards plus the new card(s) in the 'cards' array of the new round.
+               - Example: Previous Flop ["As", "Kd", "2h"]. Turn is "Qc". New round 'cards' value MUST be ["As", "Kd", "2h", "Qc"].
+               - DO NOT just put the new card ["Qc"]. The round must contain the FULL board state at that point.
+             - If the board array is empty (new street), create it with all cards: 'value: ["As", "7h", "2d"]'.
+
+           - Specific Example Fixes:
+             - "Flop comes Ace, seven, deuce rainbow" -> ["As", "7d", "2h"] (Use standard ranks A, 7, 2)
+             - "Flop is seven, eight, nine, two hearts" -> ["7h", "8h", "9s"] (Use standard ranks 7, 8, 9. "two hearts" implies 2 of them are hearts, or the suits are hearts). Treat as ["7h", "8h", "9h"] if easiest.
+
+        6. Stakes and Game Type:
            - If user says "two five" or "2/5", set small_blind_amount=2, big_blind_amount=5.
            - If user says "one two" or "1/2", set small_blind_amount=1, big_blind_amount=2.
            - If user says "six max" or "6 max", set table_size=6.
            - If user says "nine handed" or "9 handed", set table_size=9.
            - Extrapolate other table sizes and stakes beyond these examples.
 
-        6. Patch Strategy:
+        7. Patch Strategy:
            - Use "add" to set a value for a field that might not exist yet (e.g. adding "cards" to a player).
            - Use "replace" ONLY if you are certain the field already exists (e.g. updating "stack").
            - If a round for a street already exists (e.g. "Preflop"), prefer "replace" operations on that round's fields or "add" to its "actions" array.
-           - If a round for the street DOES NOT exist (e.g. moving to "Flop"), use "add" to append to the "/rounds/-" path.
+           - If a round for the street DOES NOT exist (e.g. moving to "Flop"):
+             - FIRST ensure all previous actions are recorded (e.g. if "Heads up to the turn", implies calls happened).
+             - THEN use "add" to append to the "/rounds/-" path.
            - CRITICAL: NEVER "replace" or "add" the root "/rounds" array itself if rounds already exist. Always append or modify specific indices.
            - Only use "add" for new players or new rounds.
         
-        7. Terminology:
+        8. Terminology:
            - "Hero": Refers to the player with 'hero_player_id'.
            - "Completes": Specifically refers to the Small Blind calling the difference to match the Big Blind amount pre-flop. Treat this as a "Call" action.
            - "3-bet" = a re-raise following a raise following an opening bet
@@ -122,23 +164,49 @@ export async function generateHandHistoryPatch(
 
         8. Output ONLY the JSON patch array wrapped in the 'patches' object.
 
-        9. Transcription Corrections:
+        9. Output Format (CRITICAL):
+           - You MUST return a single JSON object with a "patches" key.
+           - The value of "patches" MUST be an array of objects.
+           - EACH patch object MUST be wrapped in curly braces {}.
+           - Example of multiple patches:
+             {
+               "patches": [
+                 { "op": "add", "path": "/rounds/0/actions/-", "value": { ... } },
+                 { "op": "add", "path": "/rounds/-", "value": { ... } }
+               ]
+             }
+           - DO NOT forget to wrap each patch in {}.
+           - DO NOT just list keys and values in the array.
+
+        10. Transcription Corrections (CRITICAL):
            - "an eye check" / "an eye" -> Interpret as "and I check" / "and I".
-           - "core" / "called" / "calls" -> Interpret "core" as "Call" (common ASR error).
+           - "core" / "called" / "calls" -> Interpret "core" as "Call".
            - "bottom" -> Interpret as "Button".
            - "gun" / "under the gun" -> Interpret as "UTG".
            - "gun plus one" / "onto the gun plus one" -> Interpret as "UTG+1".
 
-        10. Narrative Handling:
+        11. Narrative Handling:
            - If the user describes a player's action with narrative phrasing like "who has been X-ing... to about Y" (e.g. "The BB who's been 3-betting to 30"), interpret this as the player performing action X to amount Y in the current game state.
            - "Me and the bottom both core" -> "Hero calls, Button calls".
 
-        11. Incomplete Sentences / Trailing Subjects:
+        12. Split Sentences / Context Continuity (CRITICAL):
+           - If the current segment contains an action or amount but NO subject (e.g. "to 30", "raises to 50", "calls", "It's about 30"), you MUST check the previous transcript segment for a "dangling subject" or incomplete thought.
+           - Example: Previous: "The big blind..." Current: "raises to 30." -> Action: Big Blind raises to 30.
+           - Example: Previous: "The big blind who has been betting..." Current: "three or four x. Yeah. It's about 30." -> Action: Big Blind raises to 30.
+           - Do NOT assume the actor is the last person who acted (e.g. Button) if a new subject was introduced in the previous segment.
+           - YOU MUST GENERATE THE ACTION described in the continuation. Do not ignore it.
+
+        13. Incomplete Sentences / Trailing Subjects:
            - If a transcript segment ends with a player name or partial phrase without an action (e.g. "The big", "And then the"), DO NOT hallucinate an action for them.
            - Wait for the next segment to provide the action.
            - It is better to produce NO patches for an ambiguous segment than to guess wrong.
+        
+        12. Comma-Separated Lists of Cards (CRITICAL):
+            - "seven, eight, nine, two hearts" -> ["7h", "8h", "9h"]
+            - If a list of cards ends with a suit (e.g. "two hearts"), apply that suit to ALL cards in the list unless they have their own suit specified.
+            - "Ace, seven, deuce rainbow" -> ["As", "7h", "2d"] (distinct suits)
 
-        12. Implicit Folds / Skipped Players:
+        13. Implicit Folds / Skipped Players:
            - If the action skips over a player who has cards (e.g. UTG raises, then Button calls), assume the intervening players (MP, CO) FOLDED.
            - If a player is not mentioned in a calling sequence closing the action (e.g. "Me and button call" -> SB and BB are not mentioned), do NOT generate Call actions for them.
            - Only generate actions for players explicitly mentioned or implied by "everyone calls".
@@ -173,10 +241,18 @@ export async function generateHandHistoryPatch(
             - Use "add" operations (with specific array indices like "/rounds/0/actions/2") to insert actions in the correct chronological order.
             - Example: If BB Checked (Action 3), but then user says "UTG called", you must insert the UTG Call at Action 3, and shift the BB Check to Action 4 (or remove and re-add it).
         
-        13. Commentary / No-Op:
+        15. End of Hand Logic (MANDATORY):
+           - If a player folds and the hand ends (e.g. "He folds", "I win"), DO NOT create a new round for "Showdown" or "River" if it wasn't reached.
+           - The last action should just be the Fold.
+           - The 'street' of the last round remains whatever it was (e.g. "Turn").
+        
+        16. Commentary / No-Op:
             - If the user's input is commentary (e.g. "bad beat", "that's crazy") or describes state that is ALREADY recorded (e.g. "it's a rainbow flop" when the flop cards are already different suits), DO NOT generate patches that duplicate data.
             - Return an empty 'patches' array: []
-            - Do not fail; just return empty patches.
+
+        CRITICAL FINAL REMINDERS:
+        - Output VALID JSON only. Do not include any text/reasoning outside the JSON object.
+        - NEVER use "10" for Ten. ALWAYS use "T". (e.g. "Th" is valid, "10h" is INVALID).
       `,
       prompt: `
         Current State Context: ${JSON.stringify(currentStateContext)}

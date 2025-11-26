@@ -1,22 +1,14 @@
 import * as dotenv from "dotenv";
 import { generateHandHistoryPatch } from "./generate-hand-history-patch";
 import { OpenHandHistory } from "../lib/OpenHandHistory";
+import { MOCK_TRANSCRIPTS } from "../lib/mock-transcripts";
 import { applyPatch, Operation } from "rfc6902";
 import util from "util";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
 
-const TRANSCRIPT = [
-  "So I'm onto the gun plus one.",
-  "I get dealt nine ten suited spades.",
-  "And I raise to seven.",
-  "So three and a half x the big blind.",
-  "I get called by the button.",
-  "The big blind who's been three betting a lot of three bets to about",
-  "three or four x. Yeah. It's about 30.",
-  "Me and the bottom both core. The flop comes 10 jack, queen.",
-];
+const TRANSCRIPT = MOCK_TRANSCRIPTS.standard.lines;
 
 async function debugTranscript() {
   console.log("🚀 Starting Transcript Debugger...\n");
@@ -99,4 +91,6 @@ function logStateSummary(state: any) {
 }
 
 debugTranscript();
+
+
 
