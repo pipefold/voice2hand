@@ -68,14 +68,52 @@ export async function generateHandHistoryPatch(
         Rules:
         1. Seat numbering is 1-indexed.
 
-        2. Table Population & Defaults (CRITICAL):
+        2. IMPLICIT FOLDS & ACTION FLOW (HIGHEST PRIORITY):
+           - Poker action MUST follow a strict clockwise order: 1 -> 2 -> ... -> table_size -> 1.
+           - Before generating ANY active action (Bet, Call, Raise, Check), you MUST check for players seated between the Last Actor and the Current Actor.
+           - IF any players were skipped, you MUST generate "Fold" actions for them IMMEDIATELY, *before* the new action.
+           - DO NOT "save" these folds for later. They must happen chronologically.
+           
+           Algorithm:
+           1. Identify Last Actor Seat (L). (If start of hand, L = Big Blind Seat = 2).
+           2. Identify Current Actor Seat (C).
+           3. Traverse seats from (L + 1) to (C - 1), wrapping around table_size.
+           4. For EACH seat S in that range:
+              - If Player at S is still in the hand (has not folded), generate { "action": "Fold", "player_id": PlayerAtS }.
+           
+           Scenarios:
+           - Start of Hand Gap:
+             - User: "I'm UTG+1 (Seat 4) and I raise."
+             - Last Actor (implicit): Big Blind (Seat 2).
+             - Skipped: Seat 3 (UTG).
+             - PATCH ORDER: 1. Seat 3 Fold. 2. Seat 4 Raise.
+           
+           - Standard Skip:
+             - User: "UTG raises, Button calls."
+             - Skipped: MP, CO, etc.
+             - PATCH ORDER: 1. MP Fold. 2. CO Fold... 5. Button Call.
+           
+           - Wrap-Around:
+             - User: "Button calls, Big Blind raises."
+             - Skipped: Small Blind (Seat 1).
+             - PATCH ORDER: 1. SB Fold. 2. BB Raise.
+
+        3. Stakes and Game Type:
+           - If user says "two five" or "2/5", set small_blind_amount=2, big_blind_amount=5.
+           - If user says "one two" or "1/2", set small_blind_amount=1, big_blind_amount=2.
+           - If user says "six max" or "6 max", set table_size=6.
+           - If user says "nine handed" or "9 handed", set table_size=9.
+           - Extrapolate other table sizes and stakes beyond these examples.
+
+        4. Table Population & Defaults (CRITICAL):
            - Default to table_size = 8 unless user specifies otherwise (e.g. "6-max", "9-handed", "Heads up").
            - You MUST populate the 'players' array with a player for EVERY seat (1 to table_size).
            - For seats where the player is not explicitly identified (like Hero, Button), create a generic player:
              { id: [seat_number], name: "P[seat_number]", seat: [seat_number], starting_stack: 100 * big_blind_amount }
+           - If 'big_blind_amount' is unknown at this step, assume 2 (so stack = 200).
            - This ensures the visualizer shows a full table, not empty seats. Uninvolved players will simply Fold.
 
-        3. Default Positioning Assumption (unless specific seats are given):
+        5. Default Positioning Assumption (unless specific seats are given):
            - Assume the Button (Dealer) is at the LAST seat (Seat = table_size).
            - Assume Small Blind is Seat 1.
            - Assume Big Blind is Seat 2.
@@ -87,13 +125,13 @@ export async function generateHandHistoryPatch(
            - Heads-up (2-handed): Button/SB=1, BB=2 (Exception: Button acts first preflop).
            - Extrapolate other table sizes beyond these examples.
 
-        3. If the user says "I am [Position]" (e.g. "I'm UTG"):
+        6. If the user says "I am [Position]" (e.g. "I'm UTG"):
            - Ensure 'table_size' is set (default to 8 if unknown).
            - Set 'dealer_seat' to equal 'table_size' (so the button is the last seat).
            - Ensure a player with 'hero_player_id' exists.
            - Place that player in the specific seat mapped above (e.g. if UTG, Seat 3).
         
-        4. Card Format & Assignment:
+        7. Card Format & Assignment:
            - Always use Uppercase Rank + Lowercase Suit (e.g., "As", "Ah", "Kd", "Tc").
            - CRITICAL: Use "T" for Ten, NEVER "10". (e.g. "Ts", not "10s").
            - "Ace" -> "A", "King" -> "K", "Queen" -> "Q", "Jack" -> "J", "Ten" -> "T"
@@ -110,7 +148,7 @@ export async function generateHandHistoryPatch(
              - Example Patch: { "op": "add", "path": "/players/3/cards", "value": ["As", "Kd"] }
              - Do NOT just put the cards in the "Dealt Card" action. They MUST be on the player object for the state to be valid.
         
-        5. Board Cards Handling:
+        8. Board Cards Handling:
            - When the user announces board cards (Flop, Turn, River), you MUST map them to the standard 2-character format (Rank + Suit).
            - Rank Mapping (CRITICAL):
              - "Ace" -> "A", "King" -> "K", "Queen" -> "Q", "Jack" -> "J", "Ten" -> "T"
@@ -136,14 +174,7 @@ export async function generateHandHistoryPatch(
              - "Flop comes Ace, seven, deuce rainbow" -> ["As", "7d", "2h"] (Use standard ranks A, 7, 2)
              - "Flop is seven, eight, nine, two hearts" -> ["7h", "8h", "9s"] (Use standard ranks 7, 8, 9. "two hearts" implies 2 of them are hearts, or the suits are hearts). Treat as ["7h", "8h", "9h"] if easiest.
 
-        6. Stakes and Game Type:
-           - If user says "two five" or "2/5", set small_blind_amount=2, big_blind_amount=5.
-           - If user says "one two" or "1/2", set small_blind_amount=1, big_blind_amount=2.
-           - If user says "six max" or "6 max", set table_size=6.
-           - If user says "nine handed" or "9 handed", set table_size=9.
-           - Extrapolate other table sizes and stakes beyond these examples.
-
-        7. Patch Strategy:
+        9. Patch Strategy:
            - Use "add" to set a value for a field that might not exist yet (e.g. adding "cards" to a player).
            - Use "replace" ONLY if you are certain the field already exists (e.g. updating "stack").
            - If a round for a street already exists (e.g. "Preflop"), prefer "replace" operations on that round's fields or "add" to its "actions" array.
@@ -153,7 +184,7 @@ export async function generateHandHistoryPatch(
            - CRITICAL: NEVER "replace" or "add" the root "/rounds" array itself if rounds already exist. Always append or modify specific indices.
            - Only use "add" for new players or new rounds.
         
-        8. Terminology:
+        10. Terminology:
            - "Hero": Refers to the player with 'hero_player_id'.
            - "Completes": Specifically refers to the Small Blind calling the difference to match the Big Blind amount pre-flop. Treat this as a "Call" action.
            - "3-bet" = a re-raise following a raise following an opening bet
@@ -162,9 +193,9 @@ export async function generateHandHistoryPatch(
            - "4-bet" = a re-raise following a 3-bet
            - "Limp": A call of the big blind amount pre-flop.
 
-        8. Output ONLY the JSON patch array wrapped in the 'patches' object.
+        11. Output ONLY the JSON patch array wrapped in the 'patches' object.
 
-        9. Output Format (CRITICAL):
+        12. Output Format (CRITICAL):
            - You MUST return a single JSON object with a "patches" key.
            - The value of "patches" MUST be an array of objects.
            - EACH patch object MUST be wrapped in curly braces {}.
@@ -178,75 +209,67 @@ export async function generateHandHistoryPatch(
            - DO NOT forget to wrap each patch in {}.
            - DO NOT just list keys and values in the array.
 
-        10. Transcription Corrections (CRITICAL):
+        13. Transcription Corrections (CRITICAL):
            - "an eye check" / "an eye" -> Interpret as "and I check" / "and I".
            - "core" / "called" / "calls" -> Interpret "core" as "Call".
            - "bottom" -> Interpret as "Button".
            - "gun" / "under the gun" -> Interpret as "UTG".
            - "gun plus one" / "onto the gun plus one" -> Interpret as "UTG+1".
 
-        11. Narrative Handling:
+        14. Narrative Handling:
            - If the user describes a player's action with narrative phrasing like "who has been X-ing... to about Y" (e.g. "The BB who's been 3-betting to 30"), interpret this as the player performing action X to amount Y in the current game state.
            - "Me and the bottom both core" -> "Hero calls, Button calls".
 
-        12. Split Sentences / Context Continuity (CRITICAL):
+        15. Split Sentences / Context Continuity (CRITICAL):
            - If the current segment contains an action or amount but NO subject (e.g. "to 30", "raises to 50", "calls", "It's about 30"), you MUST check the previous transcript segment for a "dangling subject" or incomplete thought.
            - Example: Previous: "The big blind..." Current: "raises to 30." -> Action: Big Blind raises to 30.
            - Example: Previous: "The big blind who has been betting..." Current: "three or four x. Yeah. It's about 30." -> Action: Big Blind raises to 30.
            - Do NOT assume the actor is the last person who acted (e.g. Button) if a new subject was introduced in the previous segment.
            - YOU MUST GENERATE THE ACTION described in the continuation. Do not ignore it.
 
-        13. Incomplete Sentences / Trailing Subjects:
+        16. Incomplete Sentences / Trailing Subjects:
            - If a transcript segment ends with a player name or partial phrase without an action (e.g. "The big", "And then the"), DO NOT hallucinate an action for them.
            - Wait for the next segment to provide the action.
            - It is better to produce NO patches for an ambiguous segment than to guess wrong.
         
-        12. Comma-Separated Lists of Cards (CRITICAL):
+        17. Comma-Separated Lists of Cards (CRITICAL):
             - "seven, eight, nine, two hearts" -> ["7h", "8h", "9h"]
             - If a list of cards ends with a suit (e.g. "two hearts"), apply that suit to ALL cards in the list unless they have their own suit specified.
             - "Ace, seven, deuce rainbow" -> ["As", "7h", "2d"] (distinct suits)
 
-        13. Implicit Folds / Skipped Players:
-           - If the action skips over a player who has cards (e.g. UTG raises, then Button calls), assume the intervening players (MP, CO) FOLDED.
-           - If a player is not mentioned in a calling sequence closing the action (e.g. "Me and button call" -> SB and BB are not mentioned), do NOT generate Call actions for them.
-           - Only generate actions for players explicitly mentioned or implied by "everyone calls".
-
-        13. Multi-Step & Street Transition Logic:
+        18. Multi-Step & Street Transition Logic:
            - If a user input contains actions for the current street AND announces the next street (e.g., "Me and button call. Flop is..."), you MUST:
              1. First, generate "add" patches for the missing actions (Calls) in the CURRENT round (Preflop).
              2. THEN, generate "add" patches for the NEW round (Flop).
            - Do NOT skip the intermediate actions.
            - Do NOT put pre-flop actions into the Flop round.
 
-        11. Stack Sizes:
-           - If the user does not specify a stack size for a player, assume the starting stack is 100BBs (100 * big_blind_amount).
-
-        12. Amount Logic (CRITICAL):
+        19. Amount Logic (CRITICAL):
            - "Call": The amount MUST match the highest "Bet", "Raise", or "Post BB" amount in the current round.
              - Example: If P1 raises to 7, P2 calls. P2's action is "Call", amount: 7 (NOT 5, NOT the difference).
            - "Raise" / "Bet": The amount is the TOTAL value the player puts in for the street (e.g. "Raise to 30" -> amount: 30).
            - "Post SB" / "Post BB": The amount is the absolute blind size (e.g. 1 or 2).
 
-        13. Pre-flop Blind Posting (MANDATORY):
+        20. Pre-flop Blind Posting (MANDATORY):
            - If the "Preflop" round does not exist yet, and the user describes dealing cards (e.g. "I get dealt...") or the first action (e.g. "UTG raises"), you MUST:
              1. Create the "Preflop" round.
              2. Add "Post SB" (Action 1) and "Post BB" (Action 2).
              3. Add the user's described action (e.g. "Dealt Card" or "Raise").
            - Ensure the SB and BB players exist in the 'players' array before posting blinds.
 
-        14. Corrections and Out-of-Order Info (CRITICAL):
+        21. Corrections and Out-of-Order Info (CRITICAL):
             - If the user provides information that contradicts or precedes recorded actions (e.g. "There were 3 limpers" after previously recording "I check"), you MUST correct the history.
             - You cannot simply append actions if they belong earlier in the timeline.
             - Use "remove" operations to delete incorrect actions or actions that need to be moved.
             - Use "add" operations (with specific array indices like "/rounds/0/actions/2") to insert actions in the correct chronological order.
             - Example: If BB Checked (Action 3), but then user says "UTG called", you must insert the UTG Call at Action 3, and shift the BB Check to Action 4 (or remove and re-add it).
         
-        15. End of Hand Logic (MANDATORY):
+        22. End of Hand Logic (MANDATORY):
            - If a player folds and the hand ends (e.g. "He folds", "I win"), DO NOT create a new round for "Showdown" or "River" if it wasn't reached.
            - The last action should just be the Fold.
            - The 'street' of the last round remains whatever it was (e.g. "Turn").
         
-        16. Commentary / No-Op:
+        23. Commentary / No-Op:
             - If the user's input is commentary (e.g. "bad beat", "that's crazy") or describes state that is ALREADY recorded (e.g. "it's a rainbow flop" when the flop cards are already different suits), DO NOT generate patches that duplicate data.
             - Return an empty 'patches' array: []
 
